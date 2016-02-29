@@ -7,6 +7,7 @@ using System.Net;
 using System.Web;
 using System.Web.Mvc;
 using SecondDemo;
+using System.Web.Script.Serialization;
 
 namespace SecondDemo.Controllers
 {
@@ -19,6 +20,89 @@ namespace SecondDemo.Controllers
         {
             var employees = db.Employees.Include(e => e.City).Include(e => e.Employee1).Include(e => e.Position1).Include(e => e.Project);
             return View(employees.ToList());
+        }
+
+        struct Node
+        {
+            public int? id;
+            public string name;
+            public string data;
+            public List<Node> children;
+
+            public Node(int? id, string name, string data, List<Node> children)
+            {
+                this.id = id;
+                this.name = name;
+                this.data = data;
+                this.children = children;
+            }
+
+            public void AddChild(Node child)
+            {
+                children.Add(child);
+            }
+        }
+
+        private Node FillTree(Dictionary<int?, List<int>> hierarchy, int? currentElement)
+        {
+            Employee employee = db.Employees.Find(currentElement);
+            Node currentEmployee = new Node(employee.Id, employee.FirstName, "", new List<Node>());
+
+            if (hierarchy.ContainsKey(currentElement))
+            {
+                foreach (int succeccor in hierarchy[currentElement])
+                {
+                    Node successorNode = FillTree(hierarchy, succeccor);
+                    currentEmployee.AddChild(successorNode);
+                }
+            }
+
+            return currentEmployee;
+        }
+
+        public ActionResult GetTree()
+        {
+            var employees = db.Employees.Include(e => e.City).Include(e => e.Employee1).Include(e => e.Position1).Include(e => e.Project);
+            var employeesAsList = employees.ToList();
+
+            Dictionary<int?, List<int>> hierarchy = new Dictionary<int?, List<int>>();
+
+            int rootElement = 0;
+
+            foreach (var employee in employees)
+            {
+                if (employee.Manager == null)
+                {
+                    rootElement = employee.Id;
+                }
+                else
+                {
+                    if (hierarchy.ContainsKey(employee.Manager))
+                    {
+                        hierarchy[employee.Manager].Add(employee.Id);
+                    }
+                    else
+                    {
+                        List<int> currentEmployees = new List<int>();
+                        currentEmployees.Add(employee.Id);
+
+                        hierarchy.Add(employee.Manager, currentEmployees);
+                    }
+                }
+            }
+
+            Node hier = FillTree(hierarchy, rootElement);
+            List<Node> hierAsList = new List<Node>();
+            hierAsList.Add(hier);
+
+            //string jsonString = hierAsList.ToJSON(3);
+            //string json = JsonConvert.SerializeObject(hier);
+            var serializer = new JavaScriptSerializer();
+
+            string json = serializer.Serialize(hier);
+            return Json(json, JsonRequestBehavior.AllowGet);
+
+            //return Json(new { foo = "bar" }, JsonRequestBehavior.AllowGet);
         }
 
         // GET: Employees/Details/5
